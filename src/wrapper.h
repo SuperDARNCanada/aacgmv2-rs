@@ -1,0 +1,5 @@
+#include "../target/aacgm_v2/c_aacgm_v2.7/aacgmlib_v2.h"
+#include "../target/aacgm_v2/c_aacgm_v2.7/astalg.h"
+#include "../target/aacgm_v2/c_aacgm_v2.7/igrflib.h"
+#include "../target/aacgm_v2/c_aacgm_v2.7/mlt_v2.h"
+#include "../target/aacgm_v2/c_aacgm_v2.7/rtime.h"

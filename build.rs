@@ -12,7 +12,7 @@ fn main() {
     }
 
     // Get the aacgm_v2 C code files
-    let code_dir = "c_aacgm_v2.6";
+    let code_dir = "c_aacgm_v2.7";
     let code_path = out_dir.join(code_dir);
     let tar_path = out_dir.join(format!("{code_dir}.tar"));
     let tar_file = match std::fs::File::open(&tar_path) {
@@ -37,7 +37,7 @@ fn main() {
         .expect("Unable to unpack library tarball");
 
     // Get the coefficient files
-    let coeffs_dir = "aacgm_coeffs-13";
+    let coeffs_dir = "aacgm_coeffs-14";
     let coeffs_path = out_dir.join(coeffs_dir);
     let tar_path = out_dir.join(format!("{coeffs_dir}.tar"));
     let tar_file = match std::fs::File::open(&tar_path) {
@@ -65,38 +65,40 @@ fn main() {
 
     // If necessary environment variables for AACGM_V2 not set, then set them accordingly to paths
     // to newly-downloaded files
-    if !env::var("AACGM_v2_DAT_PREFIX").is_ok() {
-        env::set_var(
-            "AACGM_v2_DAT_PREFIX",
-            coeffs_path.join(format!("{coeffs_dir}-")),
-        );
-    }
-    if !env::var("IGRF_COEFFS").is_ok() {
-        env::set_var(
-            "IGRF_COEFFS",
-            code_path.join(format!("magmodel_1590-2020.txt")),
-        );
-    }
+    // if !env::var("AACGM_v2_DAT_PREFIX").is_ok() {
+    //     env::set_var(
+    //         "AACGM_v2_DAT_PREFIX",
+    //
+    //     );
+    // }
+    // if !env::var("IGRF_COEFFS").is_ok() {
+    //     env::set_var(
+    //         "IGRF_COEFFS",
+    //         code_path.join(format!("magmodel_1590-2025.txt")),
+    //     );
+    // }
 
     // This is the path to the C header file
     let header_path = code_path.join("aacgmlib_v2.h");
     let header_path_str = header_path.to_str().expect("Path is not a valid string");
 
-    // Path to the intermediate object file for the library
-    let obj_path = code_path.join("aacgmlib_v2.o");
-
     // Tell cargo to look for shared libraries in the specified directory
     println!("cargo:rustc-link-search={}", code_path.to_str().unwrap());
 
     // Tell cargo to tell rustc to link the aacgm shared library
-    println!("cargo:rustc-link-lib=aacgmlib_v2");
+    println!("cargo:rustc-link-lib=aacgm_v2");
 
     // Tell cargo to invalidate the built crate whenever the header file changes
     println!("cargo:rerun-if-changed={}", header_path_str);
 
     // Run `clang` to compile the `aacgmlib_v2.c` file into a `aacgmlib_v2.o` object file.
     // Unwrap if not possible to spawn the process.
-    println!("clang -c -o {obj_path:?} {code_path:?}/aacgmlib_v2.c");
+    let pretty_code_path = code_path.clone().into_os_string().into_string().expect("cannot convert code_path to String");
+    println!("clang -c -o {pretty_code_path}/aacgmlib_v2.o {pretty_code_path}/aacgmlib_v2.c");
+    println!("clang -c -o {pretty_code_path}/igrflib.o {pretty_code_path}/igrflib.c");
+    println!("clang -c -o {pretty_code_path}/astalglib.o {pretty_code_path}/astalglib.c");
+    println!("clang -c -o {pretty_code_path}/mlt_v2.o {pretty_code_path}/mlt_v2.c");
+    println!("clang -c -o {pretty_code_path}/rtime.o {pretty_code_path}/rtime.c");
 
     if std::fs::File::open(code_path.join("aacgmlib_v2.c")).is_err() {
         panic!("C code file missing!")
@@ -105,14 +107,27 @@ fn main() {
     // Compile the aacgmlib_v2 library to an archive file `libaacgmlib_v2.a`
     cc::Build::new()
         .file(code_path.join("aacgmlib_v2.c"))
+        .file(code_path.join("astalglib.c"))
+        .file(code_path.join("igrflib.c"))
+        .file(code_path.join("mlt_v2.c"))
+        .file(code_path.join("rtime.c"))
         .warnings(false)
-        .compile("aacgmlib_v2");
+        .compile("aacgm_v2");
 
     let bindings = bindgen::Builder::default()
         // Throw in stdio.h first so all types are available when generating aacgmlib_v2.h header
-        .header_contents("_stdio.h", "#include<stdio.h>\n")
+        .header_contents("_stdio.h", "#include <stdio.h>\n")
+        // .header_contents("_stdlib.h", "#include <stdlib.h>\n")
+        // .header_contents("_string.h", "#include <string.h>\n")
+        // .header_contents("_math.h", "#include <math.h>\n")
+        // .header_contents("_time.h", "#include <time.h>\n")
         // The input header to generate bindings for
-        .header(header_path_str)
+        // .header(header_path_str)
+        .header(format!("{pretty_code_path}/aacgmlib_v2.h"))
+        // .header(format!("{pretty_code_path}/astalg.h"))
+        // .header(format!("{pretty_code_path}/igrflib.h"))
+        // .header(format!("{pretty_code_path}/mlt_v2.h"))
+        // .header(format!("{pretty_code_path}/rtime.h"))
         // Tell cargo to invalidate the built crate whenever any of the included header files change
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         // Finish the builder and generate the bindings
@@ -121,7 +136,7 @@ fn main() {
         .expect("Unable to generate bindings");
 
     // Write the bindings to $OUT_DIR/bindings.rs
-    let out_path = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");

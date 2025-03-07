@@ -1,0 +1,3 @@
+[env]
+AACGM_v2_DAT_PREFIX = { value = "target/aacgm_v2/aacgm_coeffs-14/aacgm_coeffs-14-", relative = true }
+IGRF_COEFFS = { value = "target/aacgm_v2/c_aacgm_v2.7/magmodel_1590-2025.txt", relative = true }
