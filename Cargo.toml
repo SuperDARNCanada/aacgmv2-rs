@@ -2,6 +2,7 @@
 name = "aacgmv2-rs"
 version = "0.1.0"
 edition = "2021"
+links = "aacgmv2"
 
 [build-dependencies]
 cc = "1.0.83"

@@ -63,27 +63,16 @@ fn main() {
         .unpack(&coeffs_path)
         .expect("Unable to unpack coefficients tarball");
 
-    // If necessary environment variables for AACGM_V2 not set, then set them accordingly to paths
-    // to newly-downloaded files
-    // if !env::var("AACGM_v2_DAT_PREFIX").is_ok() {
-    //     env::set_var(
-    //         "AACGM_v2_DAT_PREFIX",
-    //
-    //     );
-    // }
-    // if !env::var("IGRF_COEFFS").is_ok() {
-    //     env::set_var(
-    //         "IGRF_COEFFS",
-    //         code_path.join(format!("magmodel_1590-2025.txt")),
-    //     );
-    // }
+    // export necessary environment variables to any crates which depend on this one
+    println!("cargo:coeffs_dat_prefix={}", coeffs_path.join("aacgm_coeffs-14-").display());
+    println!("cargo:igrf_coeffs={}", code_path.join("magmodel_1590-2025.txt").display());
 
     // This is the path to the C header file
     let header_path = code_path.join("aacgmlib_v2.h");
     let header_path_str = header_path.to_str().expect("Path is not a valid string");
 
     // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search={}", code_path.to_str().unwrap());
+    println!("cargo:rustc-link-search={}", code_path.display());
 
     // Tell cargo to tell rustc to link the aacgm shared library
     println!("cargo:rustc-link-lib=aacgm_v2");
@@ -117,17 +106,8 @@ fn main() {
     let bindings = bindgen::Builder::default()
         // Throw in stdio.h first so all types are available when generating aacgmlib_v2.h header
         .header_contents("_stdio.h", "#include <stdio.h>\n")
-        // .header_contents("_stdlib.h", "#include <stdlib.h>\n")
-        // .header_contents("_string.h", "#include <string.h>\n")
-        // .header_contents("_math.h", "#include <math.h>\n")
-        // .header_contents("_time.h", "#include <time.h>\n")
         // The input header to generate bindings for
-        // .header(header_path_str)
         .header(format!("{pretty_code_path}/aacgmlib_v2.h"))
-        // .header(format!("{pretty_code_path}/astalg.h"))
-        // .header(format!("{pretty_code_path}/igrflib.h"))
-        // .header(format!("{pretty_code_path}/mlt_v2.h"))
-        // .header(format!("{pretty_code_path}/rtime.h"))
         // Tell cargo to invalidate the built crate whenever any of the included header files change
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         // Finish the builder and generate the bindings
