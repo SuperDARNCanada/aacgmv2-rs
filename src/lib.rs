@@ -93,4 +93,19 @@ mod tests {
         assert_relative_eq!(height, 1135.000000, max_relative=1.0e-5);
     }
 
+    #[test]
+    fn aacgm_bad_date() {
+        let year = 2030;
+        let month = 1;
+        let day = 1;
+        let hour = 0;
+        let minute = 0;
+        let second = 0;
+
+        unsafe {
+            let ret_code = crate::AACGM_v2_SetDateTime(year, month, day, hour, minute, second);
+            assert_eq!(ret_code, -1);
+        }
+    }
+
 }
