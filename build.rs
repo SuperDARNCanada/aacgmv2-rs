@@ -1,15 +1,10 @@
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn main() {
-    // Target directory for downloaded files
-    let mut out_dir = PathBuf::from("target")
+    let dir = PathBuf::from("src")
         .canonicalize()
         .expect("Cannot canonicalize path");
-    out_dir = out_dir.join("aacgm_v2");
-    if !Path::new(&out_dir).is_dir() {
-        std::fs::create_dir_all(out_dir.clone()).expect("Cannot create target directory");
-    }
 
     // Get the aacgm_v2 C code files
     let code_dir = "c_aacgm_v2.7";
@@ -68,7 +63,7 @@ fn main() {
     println!("cargo:igrf_coeffs={}", code_path.join("magmodel_1590-2025.txt").display());
 
     // This is the path to the C header file
-    let header_path = code_path.join("aacgmlib_v2.h");
+    let header_path = dir.join(format!("{code_dir}/aacgmlib_v2.h"));
     let header_path_str = header_path.to_str().expect("Path is not a valid string");
 
     // Tell cargo to look for shared libraries in the specified directory
@@ -89,7 +84,7 @@ fn main() {
     println!("clang -c -o {pretty_code_path}/mlt_v2.o {pretty_code_path}/mlt_v2.c");
     println!("clang -c -o {pretty_code_path}/rtime.o {pretty_code_path}/rtime.c");
 
-    if std::fs::File::open(code_path.join("aacgmlib_v2.c")).is_err() {
+    if std::fs::File::open(dir.join(format!("{code_dir}/aacgmlib_v2.c"))).is_err() {
         panic!("C code file missing!")
     }
 
