@@ -2,7 +2,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let dir = PathBuf::from("src")
+    let out_dir = PathBuf::from("src")
         .canonicalize()
         .expect("Cannot canonicalize path");
 
@@ -63,7 +63,7 @@ fn main() {
     println!("cargo:igrf_coeffs={}", code_path.join("magmodel_1590-2025.txt").display());
 
     // This is the path to the C header file
-    let header_path = dir.join(format!("{code_dir}/aacgmlib_v2.h"));
+    let header_path = out_dir.join(format!("{code_dir}/aacgmlib_v2.h"));
     let header_path_str = header_path.to_str().expect("Path is not a valid string");
 
     // Tell cargo to look for shared libraries in the specified directory
@@ -84,7 +84,7 @@ fn main() {
     println!("clang -c -o {pretty_code_path}/mlt_v2.o {pretty_code_path}/mlt_v2.c");
     println!("clang -c -o {pretty_code_path}/rtime.o {pretty_code_path}/rtime.c");
 
-    if std::fs::File::open(dir.join(format!("{code_dir}/aacgmlib_v2.c"))).is_err() {
+    if std::fs::File::open(out_dir.join(format!("{code_dir}/aacgmlib_v2.c"))).is_err() {
         panic!("C code file missing!")
     }
 
