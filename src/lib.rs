@@ -1,16 +1,77 @@
-#![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+use thiserror::Error;
 
+pub mod aacgmv2;
+mod coeffs;
+mod coords;
+mod igrf;
+
+const MAX_ALTITUDE: f64 = 2000.0; // km
+const RADIUS_EARTH: f64 = 6371.2;
+const NUM_FLAGS: usize = 2; // 0: geo to AACGM, 1: AACGM to geo
+const NUM_COORDS: usize = 3; // x, y, z
+const POLY_ORDER: usize = 5; // quartic polynomial fit in altitude
+const SPH_HARM_ORDER: usize = 10; // order of spherical harmonic expansion
+const KMAX: usize = (SPH_HARM_ORDER + 1) * (SPH_HARM_ORDER + 1); // number of spherical harmonic coefficients
+
+#[derive(Error, Debug)]
+pub enum AACGMv2Error {
+    /// Invalid coordinates
+    #[error("{0}")]
+    Coords(String),
+
+    /// Hit an error in an internal computation
+    #[error("{0} - {1}")]
+    Internal(i32, String),
+
+    /// Hit an error in the IGRF module
+    #[error("{0} - {1}")]
+    Igrf(i32, String),
+
+    /// Invalid environment
+    #[error("{0}")]
+    Env(&'static str),
+
+    /// Invalid coefficients file
+    #[error("{0}")]
+    CoeffFile(&'static str),
+}
+
+/// How to conduct the coordinate transformation calculations.
+pub enum Method {
+    /// Use coefficients to calculate AACGM conversions
+    Coeffs,
+
+    /// Use field-line tracing to calculate AACGM conversions
+    Trace,
+
+    /// Use field-line tracing only above 2000 km
+    AllowTrace,
+
+    /// Use coefficients to calculate AACGM conversions, even above 2000km where coefficients are invalid
+    BadIdea,
+}
+
+/// Coordinate transformation specifier.
+#[derive(Clone, Debug)]
+pub enum Transform {
+    GeodeticToAACGMv2,
+    AACGMv2ToGeodetic,
+    GeocentricToAACGMv2,
+    AACGMv2ToGeocentric,
+}
 
 #[cfg(test)]
 mod tests {
+    use crate::aacgmv2::Aacgmv2;
+    use crate::{Method, Transform, RADIUS_EARTH};
     use approx::assert_relative_eq;
+    use chrono::NaiveDate;
 
     #[test]
-    fn aacgm_convert() {
+    fn convert_coeffs() {
         let year = 2029;
         let month = 3;
         let day = 22;
@@ -18,41 +79,44 @@ mod tests {
         let minute = 11;
         let second = 0;
 
-        let mut glat: f64 = 45.5;
-        let mut glon: f64 = -23.5;
-        let mut height: f64 = 1135.0;
-        let code = 0;
+        let glat: f64 = 45.5;
+        let glon: f64 = -23.5;
+        let height: f64 = 1135.0;
 
-        let mut out_lat: f64 = 0.0;
-        let mut out_lon: f64 = 0.0;
-        let mut out_rad: f64 = 0.0;
+        let dt = NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(hour, minute, second)
+            .unwrap()
+            .and_utc();
+        let mut aacgm_model = Aacgmv2::new(dt).unwrap();
+        let cmd = Transform::GeodeticToAACGMv2;
+        let flav = Method::Coeffs;
+        let (out_lat, out_lon, out_rad) = aacgm_model
+            .convert(glat, glon, height, &cmd, &flav)
+            .unwrap();
 
-        println!("AACGM_v2_DAT_PREFIX={:?}", std::env::var("AACGM_v2_DAT_PREFIX"));
-        unsafe {
-            let ret_code = crate::AACGM_v2_SetDateTime(year, month, day, hour, minute, second);
-            assert_eq!(ret_code, 0);
-            let ret_code = crate::AACGM_v2_Convert(glat, glon, height, &mut out_lat, &mut out_lon, &mut out_rad, code);
-            assert_eq!(ret_code, 0);
-        }
+        assert_relative_eq!(out_lat, 47.402897, max_relative = 1.0e-5);
+        assert_relative_eq!(out_lon, 56.602300, max_relative = 1.0e-5);
+        assert_relative_eq!(out_rad, 1.177533, max_relative = 1.0e-5);
 
-        assert_relative_eq!(out_lat, 47.402897, max_relative=1.0e-5);
-        assert_relative_eq!(out_lon, 56.602300, max_relative=1.0e-5);
-        assert_relative_eq!(out_rad, 1.177533, max_relative=1.0e-5);
+        let cmd = Transform::AACGMv2ToGeodetic;
+        let (glat, glon, height) = aacgm_model
+            .convert(
+                out_lat,
+                out_lon,
+                (out_rad - 1.0) * RADIUS_EARTH,
+                &cmd,
+                &flav,
+            )
+            .unwrap();
 
-        let code = 1;
-
-        unsafe {
-            let ret_code = crate::AACGM_v2_Convert(out_lat, out_lon, (out_rad - 1.0) * 6371.2, &mut glat, &mut glon, &mut height, code);
-            assert_eq!(ret_code, 0);
-        }
-
-        assert_relative_eq!(glat, 45.439863, max_relative=1.0e-5);
-        assert_relative_eq!(glon, -23.477496, max_relative=1.0e-5);
-        assert_relative_eq!(height, 1134.977555, max_relative=1.0e-5);
+        assert_relative_eq!(glat, 45.439863, max_relative = 1.0e-5);
+        assert_relative_eq!(glon, -23.477496, max_relative = 1.0e-5);
+        assert_relative_eq!(height, 1134.977555, max_relative = 1.0e-5);
     }
 
     #[test]
-    fn aacgm_convert_trace() {
+    fn convert_trace() {
         let year = 2029;
         let month = 3;
         let day = 22;
@@ -60,41 +124,44 @@ mod tests {
         let minute = 11;
         let second = 0;
 
-        let mut glat: f64 = 45.5;
-        let mut glon: f64 = -23.5;
-        let mut height: f64 = 1135.0;
-        let code = 2;
+        let glat: f64 = 45.5;
+        let glon: f64 = -23.5;
+        let height: f64 = 1135.0;
 
-        let mut out_lat: f64 = 0.0;
-        let mut out_lon: f64 = 0.0;
-        let mut out_rad: f64 = 0.0;
+        let dt = NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(hour, minute, second)
+            .unwrap()
+            .and_utc();
+        let mut aacgm_model = Aacgmv2::new(dt).unwrap();
+        let cmd = Transform::GeodeticToAACGMv2;
+        let flav = Method::Trace;
+        let (out_lat, out_lon, out_rad) = aacgm_model
+            .convert(glat, glon, height, &cmd, &flav)
+            .unwrap();
 
-        println!("AACGM_v2_DAT_PREFIX={:?}", std::env::var("AACGM_v2_DAT_PREFIX"));
-        unsafe {
-            let ret_code = crate::AACGM_v2_SetDateTime(year, month, day, hour, minute, second);
-            assert_eq!(ret_code, 0);
-            let ret_code = crate::AACGM_v2_Convert(glat, glon, height, &mut out_lat, &mut out_lon, &mut out_rad, code);
-            assert_eq!(ret_code, 0);
-        }
+        assert_relative_eq!(out_lat, 47.408678, max_relative = 1.0e-5);
+        assert_relative_eq!(out_lon, 56.600154, max_relative = 1.0e-5);
+        assert_relative_eq!(out_rad, 1.177533, max_relative = 1.0e-5);
 
-        assert_relative_eq!(out_lat, 47.408678, max_relative=1.0e-5);
-        assert_relative_eq!(out_lon, 56.600154, max_relative=1.0e-5);
-        assert_relative_eq!(out_rad, 1.177533, max_relative=1.0e-5);
+        let cmd = Transform::AACGMv2ToGeodetic;
+        let (glat, glon, height) = aacgm_model
+            .convert(
+                out_lat,
+                out_lon,
+                (out_rad - 1.0) * RADIUS_EARTH,
+                &cmd,
+                &flav,
+            )
+            .unwrap();
 
-        let code = 3;
-
-        unsafe {
-            let ret_code = crate::AACGM_v2_Convert(out_lat, out_lon, (out_rad - 1.0) * 6371.2, &mut glat, &mut glon, &mut height, code);
-            assert_eq!(ret_code, 0);
-        }
-
-        assert_relative_eq!(glat, 45.500000, max_relative=1.0e-5);
-        assert_relative_eq!(glon, -23.500000, max_relative=1.0e-5);
-        assert_relative_eq!(height, 1135.000000, max_relative=1.0e-5);
+        assert_relative_eq!(glat, 45.500000, max_relative = 1.0e-5);
+        assert_relative_eq!(glon, -23.500000, max_relative = 1.0e-5);
+        assert_relative_eq!(height, 1135.000000, max_relative = 1.0e-5);
     }
 
     #[test]
-    fn aacgm_bad_date() {
+    fn bad_date() {
         let year = 2030;
         let month = 1;
         let day = 1;
@@ -102,10 +169,13 @@ mod tests {
         let minute = 0;
         let second = 0;
 
-        unsafe {
-            let ret_code = crate::AACGM_v2_SetDateTime(year, month, day, hour, minute, second);
-            assert_eq!(ret_code, -1);
-        }
+        let aacgm_model = Aacgmv2::new(
+            NaiveDate::from_ymd_opt(year, month, day)
+                .unwrap()
+                .and_hms_opt(hour, minute, second)
+                .unwrap()
+                .and_utc(),
+        );
+        assert!(aacgm_model.is_err());
     }
-
 }
