@@ -53,10 +53,7 @@ struct Geopack {
 lazy_static! {
     static ref IGRF_COEFFS: IgrfCoeffSets = {
         // file containing the IGRF coefficients
-    let filename = env!("IGRF_COEFFS");
-        if filename.is_empty() {
-        panic!("IGRF_COEFFS environment variable unset");
-    }
+        let filename = std::env::var("IGRF_COEFFS").expect("IGRF_COEFFS environment variable unset");
         let (coeffs, sec_vars) = load_coeffs(filename).unwrap();
         IgrfCoeffSets { coeff_sets: coeffs, sec_vars }
     };
